@@ -15,7 +15,7 @@ const avatar: avatarSettings = {
 name: "Frank",
 openai_voice: "ballad",
 openai_model: "gpt-4o-mini-realtime-preview-2024-12-17", // Use "gpt-4o-mini-realtime-preview-2024-12-17" for cheaper and faster responses
-simli_faceid: "0c2b8b04-5274-41f1-a21c-d5c98322efa9",
+simli_faceid: "276ed3c6-36f0-44e2-8eef-6d04b9f473fc",
 initialPrompt:
   "You are the historical figure Alexander Hamilton. You are friendly and concise in your responses. Your task is to help users with any questions they might have about you or on American history of the 18th century. Your answers are short and to the point, don't give long answers be brief and straightforward.",
 };
