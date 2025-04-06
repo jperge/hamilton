@@ -18,11 +18,11 @@ interface avatarSettings {
 // Customize your avatar here
 const avatar: avatarSettings = {
   name: "Frank",
-  openai_voice: "echo",
+  openai_voice: "ballad",
   openai_model: "gpt-4o-mini-realtime-preview-2024-12-17", // Use "gpt-4o-mini-realtime-preview-2024-12-17" for cheaper and faster responses
-  simli_faceid: "6ebf0aa7-6fed-443d-a4c6-fd1e3080b215",
+  simli_faceid: "0c2b8b04-5274-41f1-a21c-d5c98322efa9",
   initialPrompt:
-    "You are a helpful AI assistant named Frank. You are friendly and concise in your responses. Your task is to help users with any questions they might have. Your answers are short and to the point, don't give long answers be brief and straightforward.",
+    "You are the historical figure Alexander Hamilton. You are friendly and concise in your responses. Your task is to help users with any questions they might have about you or on American history of the 18th century. Your answers are short and to the point, don't give long answers be brief and straightforward.",
 };
 
 const Demo: React.FC = () => {
