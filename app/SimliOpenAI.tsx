@@ -7,6 +7,8 @@ import IconExit from "@/media/IconExit";
 import IconSparkleLoader from "@/media/IconSparkleLoader";
 import { on } from "events";
 
+const INACTIVITY_DURATION = 6000;
+
 interface SimliOpenAIProps {
   simli_faceid: string;
   openai_voice: "alloy"|"ash"|"ballad"|"coral"|"echo"|"sage"|"shimmer"|"verse";
@@ -44,9 +46,64 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const isFirstRun = useRef(true);
 
-  // New refs for managing audio chunk delay
+  // New refs for managing audio chunk delay and inactivity timer
   const audioChunkQueueRef = useRef<Int16Array[]>([]);
   const isProcessingChunkRef = useRef(false);
+  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  /**
+   * Stops audio recording from the user's microphone
+   */
+  const stopRecording = useCallback(() => {
+    if (processorRef.current) {
+      processorRef.current.disconnect();
+      processorRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    // Clear inactivity timer when stopping recording
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
+    }
+    setIsRecording(false);
+    console.log("Audio recording stopped");
+  }, []);
+
+  /**
+   * Handles stopping the interaction, cleaning up resources and resetting states.
+   */
+  const handleStop = useCallback(() => {
+    console.log("Stopping interaction...");
+    setIsLoading(false);
+    setError("");
+    stopRecording();
+    setIsAvatarVisible(false);
+    simliClient?.close();
+    openAIClientRef.current?.disconnect();
+    if (audioContextRef.current) {
+      audioContextRef.current?.close();
+      audioContextRef.current = null;
+    }
+    stopRecording();
+    onClose();
+    console.log("Interaction stopped");
+  }, [stopRecording]);
+
+  /**
+   * Resets the inactivity timer, stopping the interaction after 1 minute of inactivity.
+   */
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+    }
+    inactivityTimerRef.current = setTimeout(() => {
+      console.log("Inactivity detected - stopping interaction.");
+      handleStop();
+    }, INACTIVITY_DURATION);
+  }, [handleStop]);
 
   /**
    * Initializes the Simli client with the provided configuration.
@@ -316,34 +373,26 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
           sum += Math.abs(sample);
         }
 
+        // Reset inactivity timer if audio activity is detected
+        const avg = sum / inputData.length;
+        if (avg > 0.01) {
+          resetInactivityTimer();
+        }
+
         openAIClientRef.current?.appendInputAudio(audioData);
       };
 
       source.connect(processorRef.current);
       processorRef.current.connect(audioContextRef.current.destination);
       setIsRecording(true);
+      // Initialize the inactivity timer on recording start
+      resetInactivityTimer();
       console.log("Audio recording started");
     } catch (err) {
       console.error("Error accessing microphone:", err);
       setError("Error accessing microphone. Please check your permissions.");
     }
-  }, []);
-
-  /**
-   * Stops audio recording from the user's microphone
-   */
-  const stopRecording = useCallback(() => {
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    setIsRecording(false);
-    console.log("Audio recording stopped");
-  }, []);
+  }, [resetInactivityTimer]);
 
   /**
    * Handles the start of the interaction, initializing clients and starting recording.
@@ -367,26 +416,7 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
     }
   }, [onStart]);
 
-  /**
-   * Handles stopping the interaction, cleaning up resources and resetting states.
-   */
-  const handleStop = useCallback(() => {
-    console.log("Stopping interaction...");
-    setIsLoading(false);
-    setError("");
-    stopRecording();
-    setIsAvatarVisible(false);
-    simliClient?.close();
-    openAIClientRef.current?.disconnect();
-    if (audioContextRef.current) {
-      audioContextRef.current?.close();
-      audioContextRef.current = null;
-    }
-    stopRecording();
-    onClose();
-    console.log("Interaction stopped");
-  }, [stopRecording]);
-
+  
   /**
    * Simli Event listeners
    */
@@ -430,7 +460,7 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
             {isLoading ? (
               <IconSparkleLoader className="h-[16px] animate-loader" />
             ) : (
-              <span className="font-abc-repro-mono font-bold min-w-[160px] w-auto text-xs whitespace-nowrap">
+              <span className="font-abc-repro-mono font-bold w-[100px] text-xs">
                 Chat with Hamilton
               </span>
             )}
@@ -444,7 +474,7 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
                   "mt-4 group text-white flex-grow bg-red hover:rounded-sm hover:bg-white h-[32px] px-3 rounded-[100px] transition-all duration-300"
                 )}
               >
-                <span className="font-abc-repro-mono group-hover:text-black font-bold min-w-[160px] w-auto text-xs whitespace-nowrap transition-all duration-300">
+                <span className="font-abc-repro-mono group-hover:text-black font-bold w-[100px] text-xs transition-all duration-300">
                   Stop Interaction
                 </span>
               </button>
