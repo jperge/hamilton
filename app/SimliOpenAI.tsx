@@ -423,14 +423,14 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
             onClick={handleStart}
             disabled={isLoading}
             className={cn(
-              "w-full h-[52px] mt-4 disabled:bg-[#343434] disabled:text-white disabled:hover:rounded-[100px] bg-simliblue text-white py-3 px-6 rounded-[100px] transition-all duration-300 hover:text-black hover:bg-white hover:rounded-sm",
+              "w-full h-[32px] mt-4 disabled:bg-[#343434] disabled:text-white disabled:hover:rounded-[100px] bg-simliblue text-white py-1 px-3 rounded-[100px] transition-all duration-300 hover:text-black hover:bg-white hover:rounded-sm",
               "flex justify-center items-center"
             )}
           >
             {isLoading ? (
-              <IconSparkleLoader className="h-[20px] animate-loader" />
+              <IconSparkleLoader className="h-[16px] animate-loader" />
             ) : (
-              <span className="font-abc-repro-mono font-bold w-[164px]">
+              <span className="font-abc-repro-mono font-bold min-w-[160px] w-auto text-xs whitespace-nowrap">
                 Chat with Hamilton
               </span>
             )}
@@ -441,10 +441,10 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
               <button
                 onClick={handleStop}
                 className={cn(
-                  "mt-4 group text-white flex-grow bg-red hover:rounded-sm hover:bg-white h-[52px] px-6 rounded-[100px] transition-all duration-300"
+                  "mt-4 group text-white flex-grow bg-red hover:rounded-sm hover:bg-white h-[32px] px-3 rounded-[100px] transition-all duration-300"
                 )}
               >
-                <span className="font-abc-repro-mono group-hover:text-black font-bold w-[164px] transition-all duration-300">
+                <span className="font-abc-repro-mono group-hover:text-black font-bold min-w-[160px] w-auto text-xs whitespace-nowrap transition-all duration-300">
                   Stop Interaction
                 </span>
               </button>
