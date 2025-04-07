@@ -37,19 +37,21 @@ const Demo: React.FC = () => {
   };
 
   return (
-    <div className="bg-black min-h-screen flex flex-col items-center font-abc-repro font-normal text-sm text-white p-8">
-      <div className="flex flex-col items-center gap-6 bg-effect15White p-6 pb-[40px] rounded-xl w-full">
-        <div>
-          {showDottedFace && <DottedFace />}
-          <SimliOpenAI
-            openai_voice={avatar.openai_voice}
-            openai_model={avatar.openai_model}
-            simli_faceid={avatar.simli_faceid}
-            initialPrompt={avatar.initialPrompt}
-            onStart={onStart}
-            onClose={onClose}
-            showDottedFace={showDottedFace}
-          />
+    <div className="bg-black min-h-screen flex flex-col items-start font-abc-repro font-normal text-sm text-white p-8">
+      <div className="flex flex-col items-start gap-6 bg-effect15White p-6 pb-[40px] rounded-xl w-full ml-[50px] mt-[200px]">
+        <div style={{ transform: "scale(2)", transformOrigin: "left center" }}>
+          <div>
+            {showDottedFace && <DottedFace />}
+            <SimliOpenAI
+              openai_voice={avatar.openai_voice}
+              openai_model={avatar.openai_model}
+              simli_faceid={avatar.simli_faceid}
+              initialPrompt={avatar.initialPrompt}
+              onStart={onStart}
+              onClose={onClose}
+              showDottedFace={showDottedFace}
+            />
+          </div>
         </div>
       </div>
     </div>

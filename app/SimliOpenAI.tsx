@@ -431,7 +431,7 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
               <IconSparkleLoader className="h-[20px] animate-loader" />
             ) : (
               <span className="font-abc-repro-mono font-bold w-[164px]">
-                Test Interaction
+                Chat with Hamilton
               </span>
             )}
           </button>
