@@ -54,6 +54,9 @@ const Demo: React.FC = () => {
           </div>
         </div>
       </div>
+      <div className="fixed bottom-4 right-4 text-white text-base bg-black/50 backdrop-blur-sm p-3 rounded-lg z-50 shadow-lg">
+        Questions? Contact Janos Perge
+      </div>
     </div>
   );
 };
