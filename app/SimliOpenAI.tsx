@@ -7,7 +7,7 @@ import IconExit from "@/media/IconExit";
 import IconSparkleLoader from "@/media/IconSparkleLoader";
 import { on } from "events";
 
-const INACTIVITY_DURATION = 6000;
+const INACTIVITY_DURATION = 30000;
 
 interface SimliOpenAIProps {
   simli_faceid: string;
@@ -416,7 +416,6 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
     }
   }, [onStart]);
 
-  
   /**
    * Simli Event listeners
    */
@@ -453,14 +452,14 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
             onClick={handleStart}
             disabled={isLoading}
             className={cn(
-              "w-full h-[32px] mt-4 disabled:bg-[#343434] disabled:text-white disabled:hover:rounded-[100px] bg-simliblue text-white py-1 px-3 rounded-[100px] transition-all duration-300 hover:text-black hover:bg-white hover:rounded-sm",
+              "h-[32px] mt-4 disabled:bg-[#343434] disabled:text-white disabled:hover:rounded-[100px] bg-simliblue text-white py-1 px-6 rounded-[100px] transition-all duration-300 hover:text-black hover:bg-white hover:rounded-sm",
               "flex justify-center items-center"
             )}
           >
             {isLoading ? (
               <IconSparkleLoader className="h-[16px] animate-loader" />
             ) : (
-              <span className="font-abc-repro-mono font-bold w-[100px] text-xs">
+              <span className="font-abc-repro-mono font-bold text-xs whitespace-nowrap">
                 Chat with Hamilton
               </span>
             )}
