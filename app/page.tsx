@@ -6,6 +6,8 @@ import Image from "next/image";
 import HamiltonImage from "./Components/HamiltonFront1.jpeg";
 import fcatLogo from "./Components/fcat_logo.png";
 import fintechLogo from "./Components/fintech_logo.png";
+import fintechSandboxLogo from "./Components/fintech-sandbox-logo.png";
+import moafLogo from "./Components/moaf-logo.png";
 
 interface avatarSettings {
   name: string;
@@ -59,7 +61,30 @@ const Demo: React.FC = () => {
       {/* <div className="fixed bottom-4 right-4 text-white text-base bg-black/50 backdrop-blur-sm p-3 rounded-lg z-50 shadow-lg">
         Questions? Contact Janos Perge
       </div> */}
-      <div className="fixed bottom-4 right-4 flex items-center gap-4 bg-black/50 backdrop-blur-sm p-3 rounded-lg z-50 shadow-lg">
+      <div className="fixed top-4 right-4 bg-black/50 backdrop-blur-sm p-3 rounded-lg z-50 shadow-lg">
+        <Image
+          src={fintechLogo}
+          alt="Fintech Logo"
+          width={240}
+          height={60}
+          unoptimized
+        />
+      </div>
+      <div className="fixed bottom-4 right-4 flex flex-col items-end gap-5 bg-black/50 backdrop-blur-sm p-3 rounded-lg z-50 shadow-lg">
+        <Image
+          src={fintechSandboxLogo}
+          alt="Fintech Sandbox Logo"
+          width={120}
+          height={30}
+          unoptimized
+        />
+        <Image
+          src={moafLogo}
+          alt="MOAF Logo"
+          width={120}
+          height={30}
+          unoptimized
+        />
         <div className="bg-white p-1 rounded">
           <Image
             src={fcatLogo}
@@ -69,14 +94,7 @@ const Demo: React.FC = () => {
             unoptimized
           />
         </div>
-        <Image
-          src={fintechLogo}
-          alt="Fintech Logo"
-          width={120}
-          height={30}
-          unoptimized
-        />
-      </div>      
+      </div>
     </div>
   );
 };
