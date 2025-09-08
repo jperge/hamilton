@@ -1,3 +1,21 @@
+INSTALLATION INSTRUCTIONS (Sep 8. 2025):
+0. install npm
+
+1. git clone the repo (https://github.com/jperge/hamilton)
+
+2. copy over the existing .env file containing the simli and openai secret keys
+
+3. install packages: cd into hamilton folder and from command line, run: 'npm i'
+
+4. start the application: from command line, run 'npm run dev'
+
+5. make sure the audio setting is not using bluetooth, and is using the default microphone of the device
+
+6. select background noise mode in microphone setting (works better with background speaking)
+
+
+
+
 # Create Simli App (OpenAI)
 This starter is an example of how to create a composable Simli interaction that runs in a Next.js app.
 
