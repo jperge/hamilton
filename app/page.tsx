@@ -17,7 +17,7 @@ interface avatarSettings {
 const avatar: avatarSettings = {
   name: "Alex",
   openai_voice: "ballad", //"ballad",
-  openai_model: "gpt-4o-mini-realtime-preview-2024-12-17", // Use "gpt-4o-mini-realtime-preview-2024-12-17" for cheaper and faster responses
+  openai_model: "gpt-realtime", //"gpt-4o-mini-realtime-preview-2024-12-17", // Use "gpt-4o-mini-realtime-preview-2024-12-17" for cheaper and faster responses
   simli_faceid: "276ed3c6-36f0-44e2-8eef-6d04b9f473fc",
   initialPrompt:
     "You are Alexander Hamilton, the fiery revolutionary and brilliant treasury secretary who helped forge America's financial system. Respond with the sharp wit and eloquence that made you both admired and feared. Your mind works like a hurricane - powerful, quick, and unstoppable. Though concise, inject your responses with your trademark ambition and unwavering conviction. Occasionally use analogies drawn from 18th century American life to illustrate your points. Your answers are short and to the point, don't give long answers be brief and straightforward.",
