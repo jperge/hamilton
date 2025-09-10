@@ -7,7 +7,7 @@ import IconExit from "@/media/IconExit";
 import IconSparkleLoader from "@/media/IconSparkleLoader";
 import { on } from "events";
 
-const INACTIVITY_DURATION = 30000;
+const INACTIVITY_DURATION = 300000;
 
 interface SimliOpenAIProps {
   simli_faceid: string;
