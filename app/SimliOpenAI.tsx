@@ -50,6 +50,7 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   const audioChunkQueueRef = useRef<Int16Array[]>([]);
   const isProcessingChunkRef = useRef(false);
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isOpenAIConnectedRef = useRef(false);
 
   /**
    * Stops audio recording from the user's microphone
@@ -81,8 +82,13 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
     setError("");
     stopRecording();
     setIsAvatarVisible(false);
+    isOpenAIConnectedRef.current = false;
     simliClient?.close();
-    openAIClientRef.current?.disconnect();
+    try {
+      openAIClientRef.current?.disconnect();
+    } catch (error: any) {
+      console.warn("Error disconnecting OpenAI client:", error);
+    }
     if (audioContextRef.current) {
       audioContextRef.current?.close();
       audioContextRef.current = null;
@@ -160,18 +166,40 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
         "input_audio_buffer.speech_stopped",
         handleSpeechStopped
       );
+
+      // Handle connection errors and disconnections
+      openAIClientRef.current.on("error", (error: any) => {
+        console.error("OpenAI RealtimeClient error:", error);
+        isOpenAIConnectedRef.current = false;
+        setError(`Connection error: ${error.message || "Unknown error"}`);
+      });
+
+      // Listen for session updates that might indicate disconnection
+      openAIClientRef.current.on("session_updated", (event: any) => {
+        if (event.session?.status === "closed" || event.session?.status === "error") {
+          console.warn("OpenAI session closed or errored:", event.session?.status);
+          isOpenAIConnectedRef.current = false;
+        }
+      });
+
       // openAIClientRef.current.on('response.canceled', handleResponseCanceled);
 
       
       await openAIClientRef.current.connect().then(() => {
         console.log("OpenAI Client connected successfully");
+        isOpenAIConnectedRef.current = true;
         openAIClientRef.current?.createResponse();
         startRecording();
+      }).catch((error: any) => {
+        console.error("Failed to connect OpenAI client:", error);
+        isOpenAIConnectedRef.current = false;
+        setError(`Failed to connect: ${error.message}`);
       });
 
       setIsAvatarVisible(true);
     } catch (error: any) {
       console.error("Error initializing OpenAI client:", error);
+      isOpenAIConnectedRef.current = false;
       setError(`Failed to initialize OpenAI client: ${error.message}`);
     }
   }, [initialPrompt]);
@@ -379,7 +407,21 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
           resetInactivityTimer();
         }
 
-        openAIClientRef.current?.appendInputAudio(audioData);
+        // Only send audio if connected, handle errors gracefully
+        if (isOpenAIConnectedRef.current && openAIClientRef.current) {
+          try {
+            openAIClientRef.current.appendInputAudio(audioData);
+          } catch (error: any) {
+            // Connection lost - update state and prevent further attempts
+            if (error.message?.includes("not connected") || error.message?.includes("connection")) {
+              console.warn("Connection lost, stopping audio transmission:", error.message);
+              isOpenAIConnectedRef.current = false;
+              setError("Connection lost. Please restart the interaction.");
+            } else {
+              console.error("Error appending input audio:", error);
+            }
+          }
+        }
       };
 
       source.connect(processorRef.current);
@@ -429,7 +471,12 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
 
       simliClient?.on("disconnected", () => {
         console.log("SimliClient disconnected");
-        openAIClientRef.current?.disconnect();
+        isOpenAIConnectedRef.current = false;
+        try {
+          openAIClientRef.current?.disconnect();
+        } catch (error: any) {
+          console.warn("Error disconnecting OpenAI client:", error);
+        }
         if (audioContextRef.current) {
           audioContextRef.current?.close();
         }
