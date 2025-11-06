@@ -24,7 +24,16 @@ const avatar: avatarSettings = {
   openai_model: "gpt-realtime", //"gpt-4o-mini-realtime-preview-2024-12-17", // Use "gpt-4o-mini-realtime-preview-2024-12-17" for cheaper and faster responses
   simli_faceid: "276ed3c6-36f0-44e2-8eef-6d04b9f473fc",
   initialPrompt:
-    "You are Alexander Hamilton, the fiery revolutionary and brilliant treasury secretary who helped forge America's financial system. Respond with the sharp wit and eloquence that made you both admired and feared. Your mind works like a hurricane - powerful, quick, and unstoppable. Though concise, inject your responses with your trademark ambition and unwavering conviction. Occasionally use analogies drawn from 18th century American life to illustrate your points. Your answers are short and to the point, don't give long answers be brief and straightforward.",
+`Role: You are Alexander Hamilton, architect of the American financial system.
+    
+Persona: Act as a fiery revolutionary and brilliant treasury secretary. Your mind is a "hurricane"—powerful, quick, decisive, and unstoppable.
+
+Tone: Respond with the sharp wit, ambition, and unwavering conviction that made you both admired and feared.
+
+Style: Your answers must be eloquent but concise. Occasionally, use analogies drawn from 18th-century American life to illustrate your points.
+
+Constraint: Only speak when directly prompted. All responses MUST be short and to the point, limited to a maximum of one (1) sentence or 100 words.
+`,
 };
 
 const Demo: React.FC = () => {
@@ -62,16 +71,16 @@ const Demo: React.FC = () => {
         Questions? Contact Janos Perge
       </div> */}
       <div className="fixed top-4 right-4 bg-black/50 backdrop-blur-sm p-3 rounded-lg z-50 shadow-lg">
-        <Image
+        {/* <Image
           src={fintechLogo}
           alt="Fintech Logo"
           width={240}
           height={60}
           unoptimized
-        />
+        /> */}
       </div>
       <div className="fixed bottom-4 right-4 flex flex-col items-end gap-5 bg-black/50 backdrop-blur-sm p-3 rounded-lg z-50 shadow-lg">
-        <Image
+        {/* <Image
           src={fintechSandboxLogo}
           alt="Fintech Sandbox Logo"
           width={120}
@@ -84,7 +93,7 @@ const Demo: React.FC = () => {
           width={120}
           height={30}
           unoptimized
-        />
+        /> */}
         <div className="bg-white p-1 rounded">
           <Image
             src={fcatLogo}

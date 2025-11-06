@@ -7,7 +7,7 @@ import IconExit from "@/media/IconExit";
 import IconSparkleLoader from "@/media/IconSparkleLoader";
 import { on } from "events";
 
-const INACTIVITY_DURATION = 30000;
+const INACTIVITY_DURATION = 20000;
 
 interface SimliOpenAIProps {
   simli_faceid: string;
@@ -147,9 +147,17 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
       await openAIClientRef.current.updateSession({
         instructions: initialPrompt,
         voice: openai_voice,
-        turn_detection: { type: "server_vad" },
+        turn_detection: { 
+          type: "server_vad",
+          threshold: 0.8
+        },
         input_audio_transcription: { model: "whisper-1" },
-      });
+        // @ts-ignore - input_audio_noise_reduction parameter may not be in types yet
+        input_audio_noise_reduction: {
+          type: "near_field"
+        },
+        idle_timeout: 60,
+      } as any);
 
       // Set up event listeners
       openAIClientRef.current.on(
@@ -179,6 +187,25 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
         if (event.session?.status === "closed" || event.session?.status === "error") {
           console.warn("OpenAI session closed or errored:", event.session?.status);
           isOpenAIConnectedRef.current = false;
+        }
+      });
+
+      // Listen for session updates that might indicate disconnection
+      openAIClientRef.current.on("session_updated", (event: any) => {
+        console.log("🔔 Session updated event:", JSON.stringify(event, null, 2));
+        if (event.session?.status === "closed" || event.session?.status === "error") {
+          console.warn("OpenAI session closed or errored:", event.session?.status);
+          isOpenAIConnectedRef.current = false;
+        }
+        // Debug: Check what config is actually applied
+        if (event.session?.input_audio_noise_reduction) {
+          console.log("✅ ##### NOISE REDUCTION Noise reduction config:", event.session.input_audio_noise_reduction);
+        }
+        if (event.session?.idle_timeout) {
+          console.log("✅ ##### IDLE TIMEOUT Idle timeout:", event.session.idle_timeout);
+        }
+        if (event.session?.turn_detection) {
+          console.log("✅ ##### TURN DETECTION Turn detection config:", event.session.turn_detection);
         }
       });
 
@@ -410,7 +437,10 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
         // Only send audio if connected, handle errors gracefully
         if (isOpenAIConnectedRef.current && openAIClientRef.current) {
           try {
-            openAIClientRef.current.appendInputAudio(audioData);
+            // Check if client is still connected before sending
+            if (openAIClientRef.current.isConnected?.() !== false) {
+              openAIClientRef.current.appendInputAudio(audioData);
+            }
           } catch (error: any) {
             // Connection lost - update state and prevent further attempts
             if (error.message?.includes("not connected") || error.message?.includes("connection")) {
