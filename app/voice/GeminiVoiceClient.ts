@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality } from "@google/genai";
+import { GoogleGenAI, Modality, StartSensitivity, EndSensitivity, ActivityHandling, TurnCoverage } from "@google/genai";
 import { VoiceClient, VoiceClientConfig, VoiceClientCallbacks } from "./VoiceClient";
 import { downsampleAudio, base64ToInt16Array, int16ArrayToBase64 } from "./audioUtils";
 
@@ -16,6 +16,8 @@ export class GeminiVoiceClient implements VoiceClient {
   private callbacks: VoiceClientCallbacks;
   private connected = false;
   private ai: GoogleGenAI;
+  private keepaliveInterval: ReturnType<typeof setInterval> | null = null;
+  private modelSpeaking = false;
 
   constructor(config: VoiceClientConfig, callbacks: VoiceClientCallbacks) {
     this.config = config;
@@ -38,6 +40,17 @@ export class GeminiVoiceClient implements VoiceClient {
             voiceConfig: {
               prebuiltVoiceConfig: { voiceName: this.config.voice },
             },
+          },
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              disabled: false,
+              startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
+              endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
+              prefixPaddingMs: 20,
+              silenceDurationMs: 500,
+            },
+            activityHandling: ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
+            turnCoverage: TurnCoverage.TURN_INCLUDES_ALL_INPUT,
           },
         },
         callbacks: {
@@ -66,6 +79,7 @@ export class GeminiVoiceClient implements VoiceClient {
       // Session is now assigned — mark as connected and notify
       console.log("Gemini Live session established successfully");
       this.connected = true;
+      this.startKeepalive();
       this.callbacks.onConnected();
     } catch (error: any) {
       console.error("Error initializing Gemini Live client:", error);
@@ -78,6 +92,7 @@ export class GeminiVoiceClient implements VoiceClient {
 
   disconnect(): void {
     this.connected = false;
+    this.stopKeepalive();
     try {
       this.session?.close();
     } catch (e) {
@@ -85,6 +100,52 @@ export class GeminiVoiceClient implements VoiceClient {
     }
     this.session = null;
     this.callbacks.onDisconnected();
+  }
+
+  /**
+   * Start sending silent audio frames every 5 seconds to prevent
+   * the Gemini Live server from closing the connection due to inactivity.
+   */
+  private startKeepalive(): void {
+    this.stopKeepalive();
+    this.keepaliveInterval = setInterval(() => {
+      if (this.connected && this.session && !this.modelSpeaking) {
+        try {
+          // Send 160 samples (10ms) of silence at 16kHz
+          const silence = new Int16Array(160);
+          const base64Data = int16ArrayToBase64(silence);
+          this.session.sendRealtimeInput({
+            audio: {
+              data: base64Data,
+              mimeType: "audio/pcm;rate=16000",
+            },
+          });
+          console.log("Gemini keepalive: sent 10ms silence packet");
+        } catch (e) {
+          console.warn("Gemini keepalive failed:", e);
+        }
+      }
+    }, 2000);
+  }
+
+  /**
+   * Restart the keepalive timer so the next packet is sent
+   * a full interval from now (called after turn completes).
+   */
+  private resetKeepalive(): void {
+    if (this.connected) {
+      this.startKeepalive();
+    }
+  }
+
+  /**
+   * Stop the keepalive interval.
+   */
+  private stopKeepalive(): void {
+    if (this.keepaliveInterval) {
+      clearInterval(this.keepaliveInterval);
+      this.keepaliveInterval = null;
+    }
   }
 
   sendAudio(audio: Int16Array): void {
@@ -136,9 +197,10 @@ export class GeminiVoiceClient implements VoiceClient {
       return;
     }
 
-    // Handle interruption
+    // Handle interruption — user started speaking, model stops
     if (message.serverContent?.interrupted) {
       console.warn("Gemini: User interrupted the conversation");
+      this.modelSpeaking = false;
       this.callbacks.onInterruption();
       return;
     }
@@ -146,6 +208,7 @@ export class GeminiVoiceClient implements VoiceClient {
     // Handle audio data from the model
     const parts = message.serverContent?.modelTurn?.parts;
     if (parts) {
+      this.modelSpeaking = true;
       for (const part of parts) {
         if (part.inlineData?.data) {
           try {
@@ -173,9 +236,11 @@ export class GeminiVoiceClient implements VoiceClient {
       console.log("Gemini assistant:", outputTranscript);
     }
 
-    // Handle turn completion
+    // Handle turn completion — restart keepalive timer fresh
     if (message.serverContent?.turnComplete) {
-      console.log("Gemini: Turn complete");
+      console.log("Gemini: Turn complete — restarting keepalive");
+      this.modelSpeaking = false;
+      this.resetKeepalive();
     }
   }
 }

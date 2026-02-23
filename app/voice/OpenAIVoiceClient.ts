@@ -29,6 +29,9 @@ export class OpenAIVoiceClient implements VoiceClient {
   async connect(): Promise<void> {
     try {
       console.log("Initializing OpenAI client...");
+      console.log("OpenAI model:", this.config.model);
+      console.log("OpenAI voice:", this.config.voice);
+      console.log("OpenAI API key present:", !!this.config.apiKey);
       this.client = new RealtimeClient({
         model: this.config.model,
         apiKey: this.config.apiKey,
@@ -52,8 +55,10 @@ export class OpenAIVoiceClient implements VoiceClient {
 
       // Wire up OpenAI events to VoiceClient callbacks
       this.client.on("conversation.updated", (event: any) => {
+        console.log("OpenAI conversation.updated:", event);
         const { item, delta } = event;
         if (item.type === "message" && item.role === "assistant") {
+          console.log("OpenAI: Assistant message detected");
           if (delta && delta.audio) {
             // Downsample 24kHz -> 16kHz before delivering to avatar
             const downsampled = downsampleAudio(delta.audio, 24000, 16000);
@@ -68,7 +73,14 @@ export class OpenAIVoiceClient implements VoiceClient {
       });
 
       this.client.on("conversation.interrupted", () => {
+        console.log("OpenAI: conversation.interrupted");
         this.callbacks.onInterruption();
+        // Cancel the current response, matching original behavior
+        try {
+          this.client?.cancelResponse("");
+        } catch (e) {
+          console.warn("cancelResponse failed:", e);
+        }
       });
 
       this.client.on("input_audio_buffer.speech_stopped", (event: any) => {
@@ -163,8 +175,10 @@ export class OpenAIVoiceClient implements VoiceClient {
   }
 
   triggerResponse(): void {
+    console.log("OpenAI: triggerResponse called, client connected:", this.connected);
     try {
       this.client?.createResponse();
+      console.log("OpenAI: createResponse sent");
     } catch (err) {
       console.warn("createResponse failed (non-fatal):", err);
     }

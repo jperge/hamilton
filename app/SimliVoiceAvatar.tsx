@@ -87,7 +87,7 @@ const SimliVoiceAvatar: React.FC<SimliVoiceAvatarProps> = ({
         faceID: simli_faceid,
         handleSilence: true,
         maxSessionLength: 6000,
-        maxIdleTime: 6000,
+        maxIdleTime: 600,
         videoRef: videoRef.current,
         audioRef: audioRef.current,
         enableConsoleLogs: true,
@@ -141,10 +141,10 @@ const SimliVoiceAvatar: React.FC<SimliVoiceAvatarProps> = ({
       console.warn("Error disconnecting voice client:", error);
     }
     voiceClientRef.current = null;
-    if (audioContextRef.current) {
-      audioContextRef.current?.close();
-      audioContextRef.current = null;
+    if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+      audioContextRef.current.close().catch(() => {});
     }
+    audioContextRef.current = null;
     onClose();
     console.log("Interaction stopped");
   }, [stopRecording, onClose]);
@@ -292,8 +292,8 @@ const SimliVoiceAvatar: React.FC<SimliVoiceAvatarProps> = ({
         voiceClientRef.current?.disconnect();
       } catch (e) {}
       simliClient?.close();
-      if (audioContextRef.current) {
-        audioContextRef.current?.close();
+      if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+        audioContextRef.current.close().catch(() => {});
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
