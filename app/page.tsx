@@ -1,31 +1,35 @@
 "use client";
 import React, { use, useEffect, useState } from "react";
-import SimliOpenAI from "./SimliOpenAI";
+import SimliVoiceAvatar from "./SimliVoiceAvatar";
 import DottedFace from "./Components/DottedFace";
+import BackendSelector from "./Components/BackendSelector";
 import Image from "next/image";
 import HamiltonImage from "./Components/HamiltonFront1.jpeg";
 import fcatLogo from "./Components/fcat_logo.png";
 import fintechLogo from "./Components/fintech_logo.png";
 import fintechSandboxLogo from "./Components/fintech-sandbox-logo.png";
 import moafLogo from "./Components/moaf-logo.png";
+import { VoiceBackend } from "./voice/VoiceClient";
 
-interface avatarSettings {
-  name: string;
-  openai_voice: "alloy"|"ash"|"ballad"|"coral"|"echo"|"sage"|"shimmer"|"verse";
-  openai_model: string;
-  simli_faceid: string;
-  initialPrompt: string;
-}
+// Per-backend default voice and model settings
+const BACKEND_DEFAULTS: Record<VoiceBackend, { voiceModel: string; voiceName: string }> = {
+  openai: {
+    voiceModel: "gpt-realtime",
+    voiceName: "ballad",
+  },
+  gemini: {
+    voiceModel: "gemini-2.5-flash-native-audio-preview-12-2025",
+    voiceName: "Orus",
+  },
+};
 
 // Customize your avatar here
-const avatar: avatarSettings = {
+const avatar = {
   name: "Alex",
-  openai_voice: "ballad", //"ballad",
-  openai_model: "gpt-realtime", //"gpt-4o-mini-realtime-preview-2024-12-17", // Use "gpt-4o-mini-realtime-preview-2024-12-17" for cheaper and faster responses
   simli_faceid: "276ed3c6-36f0-44e2-8eef-6d04b9f473fc",
   initialPrompt:
 `Role: You are Alexander Hamilton, architect of the American financial system.
-    
+
 Persona: Act as a fiery revolutionary and brilliant treasury secretary. Your mind is a "hurricane"—powerful, quick, decisive, and unstoppable.
 
 Tone: Respond with the sharp wit, ambition, and unwavering conviction that made you both admired and feared.
@@ -38,15 +42,21 @@ Constraint: Only speak when directly prompted. All responses MUST be short and t
 
 const Demo: React.FC = () => {
   const [showDottedFace, setShowDottedFace] = useState(true);
+  const [voiceBackend, setVoiceBackend] = useState<VoiceBackend>("openai");
+  const [isInteracting, setIsInteracting] = useState(false);
+
+  const currentDefaults = BACKEND_DEFAULTS[voiceBackend];
 
   const onStart = () => {
     console.log("Setting setshowDottedface to false...");
     setShowDottedFace(false);
+    setIsInteracting(true);
   };
 
   const onClose = () => {
     console.log("Setting setshowDottedface to true...");
     setShowDottedFace(true);
+    setIsInteracting(false);
   };
 
   return (
@@ -55,9 +65,10 @@ const Demo: React.FC = () => {
         <div style={{ transform: "scale(2)", transformOrigin: "left center" }}>
           <div>
             {showDottedFace && <DottedFace />}
-            <SimliOpenAI
-              openai_voice={avatar.openai_voice}
-              openai_model={avatar.openai_model}
+            <SimliVoiceAvatar
+              voiceBackend={voiceBackend}
+              voiceModel={currentDefaults.voiceModel}
+              voiceName={currentDefaults.voiceName}
               simli_faceid={avatar.simli_faceid}
               initialPrompt={avatar.initialPrompt}
               onStart={onStart}
@@ -65,6 +76,13 @@ const Demo: React.FC = () => {
               showDottedFace={showDottedFace}
             />
           </div>
+        </div>
+        <div className="relative z-10">
+          <BackendSelector
+            value={voiceBackend}
+            onChange={setVoiceBackend}
+            disabled={isInteracting}
+          />
         </div>
       </div>
       {/* <div className="fixed bottom-4 right-4 text-white text-base bg-black/50 backdrop-blur-sm p-3 rounded-lg z-50 shadow-lg">

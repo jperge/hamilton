@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@deepgram/sdk": "^3.5.1",
+    "@google/genai": "^1.42.0",
     "@openai/realtime-api-beta": "github:simliai/openai-realtime-api-beta",
     "axios": "^1.7.5",
     "clsx": "^2.1.1",
