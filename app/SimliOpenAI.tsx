@@ -5,9 +5,11 @@ import VideoBox from "./Components/VideoBox";
 import cn from "./utils/TailwindMergeAndClsx";
 import IconExit from "@/media/IconExit";
 import IconSparkleLoader from "@/media/IconSparkleLoader";
-import { on } from "events";
+//import { on } from "events";
 
-const INACTIVITY_DURATION = 17001; //keep this below 20 seconds. Idling causes connection loss, and the AI eventually stops listening. 
+const INACTIVITY_DURATION = 20000;
+const HEARTBEAT_INTERVAL_MS = 20000;
+const RECONNECT_MAX_ATTEMPTS = 5;
 
 interface SimliOpenAIProps {
   simli_faceid: string;
@@ -51,8 +53,12 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   const isProcessingChunkRef = useRef(false);
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isOpenAIConnectedRef = useRef(false);
-  const isFirstConnectionRef = useRef(true);
-  const inactivityTimerStartTimeRef = useRef<number | null>(null);
+  const heartbeatIntervalRef = useRef<number | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+
+  // Refs to break circular dependency between initializeOpenAIClient and handleReconnect
+  const handleReconnectRef = useRef<() => void>(() => {});
+  const initializeOpenAIClientRef = useRef<(options?: { skipCreateResponse?: boolean }) => Promise<void>>(async () => {});
 
   /**
    * Stops audio recording from the user's microphone
@@ -70,81 +76,10 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
     if (inactivityTimerRef.current) {
       clearTimeout(inactivityTimerRef.current);
       inactivityTimerRef.current = null;
-      inactivityTimerStartTimeRef.current = null;
-      console.log("⏱️ Inactivity timer CLEARED (recording stopped)");
     }
     setIsRecording(false);
     console.log("Audio recording stopped");
   }, []);
-
-  /**
-   * Handles stopping the interaction, cleaning up resources and resetting states.
-   */
-  const handleStop = useCallback(() => {
-    console.log("Stopping interaction...");
-    setIsLoading(false);
-    setError("");
-    
-    // Stop recording first
-    stopRecording();
-    
-    setIsAvatarVisible(false);
-    isOpenAIConnectedRef.current = false;
-    
-    // Close Simli client gracefully
-    try {
-      if (simliClient) {
-        simliClient.close();
-      }
-    } catch (error: any) {
-      // WebSocket closure errors are expected and can be ignored
-      if (!error.message?.includes("WebSocket") && !error.message?.includes("closed")) {
-        console.warn("Error closing Simli client:", error);
-      }
-    }
-    
-    // Disconnect OpenAI client gracefully
-    try {
-      if (openAIClientRef.current) {
-        openAIClientRef.current.disconnect();
-      }
-    } catch (error: any) {
-      console.warn("Error disconnecting OpenAI client:", error);
-    }
-    openAIClientRef.current = null;
-    
-    // Close audio context gracefully - check state first
-    if (audioContextRef.current) {
-      try {
-        // Check if AudioContext is not already closed
-        if (audioContextRef.current.state !== 'closed') {
-          audioContextRef.current.close();
-        }
-      } catch (error: any) {
-        console.warn("Error closing AudioContext:", error);
-      }
-      audioContextRef.current = null;
-    }
-    
-    onClose();
-    console.log("Interaction stopped");
-  }, [stopRecording]);
-
-  /**
-   * Resets the inactivity timer, stopping the interaction after some time of inactivity.
-   */
-  const resetInactivityTimer = useCallback(() => {
-    if (inactivityTimerRef.current) {
-      clearTimeout(inactivityTimerRef.current);
-    }
-    inactivityTimerStartTimeRef.current = Date.now();
-    inactivityTimerRef.current = setTimeout(() => {
-      console.log(`Inactivity detected after ${INACTIVITY_DURATION}ms - stopping interaction.`);
-      handleStop();
-    }, INACTIVITY_DURATION);
-    const timeRemaining = INACTIVITY_DURATION;
-    console.log(`⏱️ Inactivity timer RESET - will trigger in ${timeRemaining}ms`);
-  }, [handleStop]);
 
   /**
    * Initializes the Simli client with the provided configuration.
@@ -167,196 +102,33 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
     }
   }, [simli_faceid]);
 
-  /**
-   * Initializes the OpenAI client, sets up event listeners, and connects to the API.
-   */
-  const initializeOpenAIClient = useCallback(async () => {
-    try {
-      // Clean up any existing client before creating a new one
-      if (openAIClientRef.current) {
-        try {
-          console.log("Cleaning up existing client before reinitializing...");
-          await openAIClientRef.current.disconnect();
-        } catch (error) {
-          console.warn("Error disconnecting existing client:", error);
-        }
-        openAIClientRef.current = null;
-      }
-      
-      console.log("Initializing OpenAI client...");
-      openAIClientRef.current = new RealtimeClient({
-        model: openai_model,
-        apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
-        dangerouslyAllowAPIKeyInBrowser: true,
-      });
+  const clearHeartbeat = useCallback(() => {
+    if (heartbeatIntervalRef.current) {
+      window.clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+  }, []);
 
-      await openAIClientRef.current.updateSession({
-        instructions: initialPrompt,
-        voice: openai_voice,
-        turn_detection: { 
-          type: "server_vad",
-          threshold: 0.8
-        },
-        input_audio_transcription: { model: "whisper-1" },
-        // @ts-ignore - input_audio_noise_reduction parameter may not be in types yet
-        input_audio_noise_reduction: {
-          type: "near_field"
-        },
-        idle_timeout: 60,
-      } as any);
-
-      // Set up event listeners
-      openAIClientRef.current.on(
-        "conversation.updated",
-        handleConversationUpdate
-      );
-
-      openAIClientRef.current.on(
-        "conversation.interrupted",
-        interruptConversation
-      );
-
-      openAIClientRef.current.on(
-        "input_audio_buffer.speech_stopped",
-        handleSpeechStopped
-      );
-
-      // Handle connection errors and disconnections
-      openAIClientRef.current.on("error", (error: any) => {
-        console.error("OpenAI RealtimeClient error:", error);
-        isOpenAIConnectedRef.current = false;
-        setError(`Connection error: ${error.message || "Unknown error"}`);
-      });
-
-      // Listen for session updates that might indicate disconnection
-      openAIClientRef.current.on("session_updated", (event: any) => {
-        if (event.session?.status === "closed" || event.session?.status === "error") {
-          console.warn("OpenAI session closed or errored:", event.session?.status);
-          isOpenAIConnectedRef.current = false;
-        }
-      });
-
-      // Listen for session updates that might indicate disconnection
-      openAIClientRef.current.on("session_updated", (event: any) => {
-        console.log("🔔 Session updated event:", JSON.stringify(event, null, 2));
-        if (event.session?.status === "closed" || event.session?.status === "error") {
-          console.warn("OpenAI session closed or errored:", event.session?.status);
-          isOpenAIConnectedRef.current = false;
-        }
-        // Debug: Check what config is actually applied
-        if (event.session?.input_audio_noise_reduction) {
-          console.log("✅ ##### NOISE REDUCTION Noise reduction config:", event.session.input_audio_noise_reduction);
-        }
-        if (event.session?.idle_timeout) {
-          console.log("✅ ##### IDLE TIMEOUT Idle timeout:", event.session.idle_timeout);
-        }
-        if (event.session?.turn_detection) {
-          console.log("✅ ##### TURN DETECTION Turn detection config:", event.session.turn_detection);
-        }
-      });
-
-      // openAIClientRef.current.on('response.canceled', handleResponseCanceled);
-
-      
-      await openAIClientRef.current.connect().then(async () => {
-        console.log("OpenAI Client connected successfully");
-        isOpenAIConnectedRef.current = true;
-        
-        // Only create response on first connection, not on reconnection
-        // This prevents automatic speech after reconnect
-        if (isFirstConnectionRef.current) {
-          console.log("First connection - creating response");
-          openAIClientRef.current?.createResponse();
-          isFirstConnectionRef.current = false;
+  const startHeartbeat = useCallback(() => {
+    clearHeartbeat();
+    if (!openAIClientRef.current) return;
+    heartbeatIntervalRef.current = window.setInterval(() => {
+      try {
+        // @ts-ignore - client may expose a sendEvent or similar; this is a lightweight heartbeat
+        if (openAIClientRef.current?.sendEvent) {
+          // Send a minimal heartbeat event to keep session active
+          // This shouldn't trigger any assistant speech
+          // @ts-ignore
+          openAIClientRef.current.sendEvent("heartbeat", { ts: Date.now() });
         } else {
-          console.log("Reconnection - initializing session without auto-speech");
-          // After reconnect, we need to initialize the session state properly
-          // Wait a bit for the session to be fully ready, then create and cancel response
-          // This ensures the session is properly initialized to handle user input
-          await new Promise(resolve => setTimeout(resolve, 200));
-          try {
-            // Check if client is still connected before creating response
-            if (openAIClientRef.current && isOpenAIConnectedRef.current) {
-              openAIClientRef.current.createResponse();
-              // Cancel immediately to prevent speech but initialize session state
-              setTimeout(() => {
-                if (openAIClientRef.current && isOpenAIConnectedRef.current) {
-                  try {
-                    openAIClientRef.current.cancelResponse("");
-                    console.log("Session initialized after reconnect - ready for user input");
-                  } catch (cancelError) {
-                    console.warn("Error canceling response after reconnect:", cancelError);
-                  }
-                }
-              }, 100);
-            } else {
-              console.warn("Client not connected, skipping session initialization");
-            }
-          } catch (error: any) {
-            // Only log if it's not a connection error (those are expected during cleanup)
-            if (!error.message?.includes("not connected") && !error.message?.includes("connection")) {
-              console.warn("Error initializing session after reconnect:", error);
-            }
-          }
+          // Fallback: updateSession with no-op (avoid heavy ops) - commented out intentionally
+          // openAIClientRef.current.updateSession({});
         }
-        
-        startRecording();
-      }).catch((error: any) => {
-        console.error("Failed to connect OpenAI client:", error);
-        isOpenAIConnectedRef.current = false;
-        setError(`Failed to connect: ${error.message}`);
-      });
-
-      setIsAvatarVisible(true);
-    } catch (error: any) {
-      console.error("Error initializing OpenAI client:", error);
-      isOpenAIConnectedRef.current = false;
-      setError(`Failed to initialize OpenAI client: ${error.message}`);
-    }
-  }, [initialPrompt]);
-
-  /**
-   * Handles conversation updates, including user and assistant messages.
-   */
-  const handleConversationUpdate = useCallback((event: any) => {
-    console.log("Conversation updated:", event);
-    const { item, delta } = event;
-
-    if (item.type === "message" && item.role === "assistant") {
-      console.log("Assistant message detected");
-      if (delta && delta.audio) {
-        const downsampledAudio = downsampleAudio(delta.audio, 24000, 16000);
-        audioChunkQueueRef.current.push(downsampledAudio);
-        if (!isProcessingChunkRef.current) {
-          processNextAudioChunk();
-        }
+      } catch (err: any) {
+        console.warn("Heartbeat failed:", err);
       }
-      // Check if the message is complete (no more deltas expected)
-      // When status is 'completed' or item.status indicates completion
-      if (item.status === 'completed' || (!delta && item.status !== 'in_progress')) {
-        // Wait a bit for any remaining audio chunks to be processed
-        setTimeout(() => {
-          if (audioChunkQueueRef.current.length === 0 && !isProcessingChunkRef.current) {
-            console.log("⏱️ Assistant message completed - resetting inactivity timer");
-            resetInactivityTimer();
-          }
-        }, 500);
-      }
-    } else if (item.type === "message" && item.role === "user") {
-      setUserMessage(item.content[0].transcript);
-      // Reset timer when user sends a message
-      resetInactivityTimer();
-    }
-  }, [resetInactivityTimer]);
-
-  /**
-   * Handles interruptions in the conversation flow.
-   */
-  const interruptConversation = () => {
-    console.warn("User interrupted the conversation");
-    simliClient?.ClearBuffer();
-    openAIClientRef.current?.cancelResponse("");
-  };
+    }, HEARTBEAT_INTERVAL_MS) as unknown as number;
+  }, [clearHeartbeat]);
 
   /**
    * Processes the next audio chunk in the queue.
@@ -383,19 +155,7 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
         isProcessingChunkRef.current = false;
         processNextAudioChunk();
       }
-    } else if (audioChunkQueueRef.current.length === 0 && !isProcessingChunkRef.current) {
-      // Queue is empty and processing is done - AI has finished speaking
-      // Reset the inactivity timer to allow for the next conversation turn
-      console.log("⏱️ AI finished speaking - resetting inactivity timer");
-      resetInactivityTimer();
     }
-  }, [resetInactivityTimer]);
-
-  /**
-   * Handles the end of user speech.
-   */
-  const handleSpeechStopped = useCallback((event: any) => {
-    console.log("Speech stopped event received", event);
   }, []);
 
   /**
@@ -448,11 +208,6 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   /**
    * Downsamples audio data from one sample rate to another using linear interpolation
    * and anti-aliasing filter.
-   *
-   * @param audioData - Input audio data as Int16Array
-   * @param inputSampleRate - Original sampling rate in Hz
-   * @param outputSampleRate - Target sampling rate in Hz
-   * @returns Downsampled audio data as Int16Array
    */
   const downsampleAudio = (
     audioData: Int16Array,
@@ -498,15 +253,84 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   };
 
   /**
+   * Handles conversation updates, including user and assistant messages.
+   */
+  const handleConversationUpdate = useCallback((event: any) => {
+    console.log("Conversation updated:", event);
+    const { item, delta } = event;
+
+    if (item.type === "message" && item.role === "assistant") {
+      console.log("Assistant message detected");
+      if (delta && delta.audio) {
+        const downsampledAudio = downsampleAudio(delta.audio, 24000, 16000);
+        audioChunkQueueRef.current.push(downsampledAudio);
+        if (!isProcessingChunkRef.current) {
+          processNextAudioChunk();
+        }
+      }
+    } else if (item.type === "message" && item.role === "user") {
+      setUserMessage(item.content[0].transcript);
+    }
+  }, []);
+
+  /**
+   * Handles interruptions in the conversation flow.
+   */
+  const interruptConversation = () => {
+    console.warn("User interrupted the conversation");
+    simliClient?.ClearBuffer();
+    openAIClientRef.current?.cancelResponse("");
+  };
+
+  /**
+   * Handles the end of user speech.
+   */
+  const handleSpeechStopped = useCallback((event: any) => {
+    console.log("Speech stopped event received", event);
+  }, []);
+
+  // Make sure to clear heartbeat and reconnect state on stop/cleanup
+  const handleStop = useCallback(() => {
+    console.log("Stopping interaction...");
+    setIsLoading(false);
+    setError("");
+    stopRecording();
+    setIsAvatarVisible(false);
+    isOpenAIConnectedRef.current = false;
+    reconnectAttemptsRef.current = 0;
+    clearHeartbeat();
+    simliClient?.close();
+    try {
+      openAIClientRef.current?.disconnect();
+    } catch (error: any) {
+      console.warn("Error disconnecting OpenAI client:", error);
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current?.close();
+      audioContextRef.current = null;
+    }
+    stopRecording();
+    onClose();
+    console.log("Interaction stopped");
+  }, [stopRecording, clearHeartbeat, onClose]);
+
+  /**
+   * Resets the inactivity timer, stopping the interaction after 1 minute of inactivity.
+   */
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+    }
+    inactivityTimerRef.current = setTimeout(() => {
+      console.log("Inactivity detected - stopping interaction.");
+      handleStop();
+    }, INACTIVITY_DURATION);
+  }, [handleStop]);
+
+  /**
    * Starts audio recording from the user's microphone.
    */
   const startRecording = useCallback(async () => {
-    // Don't start recording if already recording (prevents resetting timer on reconnect)
-    if (isRecording) {
-      console.log("Recording already active, skipping startRecording call");
-      return;
-    }
-
     if (!audioContextRef.current) {
       audioContextRef.current = new AudioContext({ sampleRate: 24000 });
     }
@@ -536,10 +360,9 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
           sum += Math.abs(sample);
         }
 
-        // Reset inactivity timer only on meaningful audio activity (not just background noise)
-        // Using a higher threshold to avoid resetting on ambient noise
+        // Reset inactivity timer if audio activity is detected
         const avg = sum / inputData.length;
-        if (avg > 0.05) { // Increased threshold to detect actual speech, not background noise
+        if (avg > 0.01) {
           resetInactivityTimer();
         }
 
@@ -563,30 +386,173 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
       source.connect(processorRef.current);
       processorRef.current.connect(audioContextRef.current.destination);
       setIsRecording(true);
-      // Only initialize the inactivity timer on first recording start, not on reconnects
-      // This prevents the timer from being reset during reconnection
-      if (isFirstConnectionRef.current) {
-        resetInactivityTimer();
-        console.log("⏱️ Inactivity timer STARTED on first connection");
-      } else {
-        // On reconnect, check if timer is still running, if not, restart it
-        if (!inactivityTimerRef.current && inactivityTimerStartTimeRef.current === null) {
-          console.log("⏱️ Timer was cleared, restarting on reconnect");
-          resetInactivityTimer();
-        } else {
-          const elapsed = inactivityTimerStartTimeRef.current 
-            ? Date.now() - inactivityTimerStartTimeRef.current 
-            : 0;
-          const remaining = Math.max(0, INACTIVITY_DURATION - elapsed);
-          console.log(`⏱️ Timer still running on reconnect - ${remaining}ms remaining`);
-        }
-      }
+      // Initialize the inactivity timer on recording start
+      resetInactivityTimer();
       console.log("Audio recording started");
     } catch (err) {
       console.error("Error accessing microphone:", err);
       setError("Error accessing microphone. Please check your permissions.");
     }
-  }, [resetInactivityTimer, isRecording]);
+  }, [resetInactivityTimer]);
+
+  /**
+   * Initializes the OpenAI client, sets up event listeners, and connects to the API.
+   */
+  const initializeOpenAIClient = useCallback(async (options?: { skipCreateResponse?: boolean }) => {
+    try {
+      console.log("Initializing OpenAI client...");
+      openAIClientRef.current = new RealtimeClient({
+        model: openai_model,
+        apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
+        dangerouslyAllowAPIKeyInBrowser: true,
+      });
+
+      await openAIClientRef.current.updateSession({
+        instructions: initialPrompt,
+        voice: openai_voice,
+        turn_detection: {
+          type: "server_vad",
+          threshold: 0.8
+        },
+        input_audio_transcription: { model: "whisper-1" },
+        // @ts-ignore - input_audio_noise_reduction parameter may not be in types yet
+        input_audio_noise_reduction: {
+          type: "near_field"
+        },
+        idle_timeout: 60,
+      } as any);
+
+      // Set up event listeners
+      openAIClientRef.current.on("conversation.updated", handleConversationUpdate);
+      openAIClientRef.current.on("conversation.interrupted", interruptConversation);
+      openAIClientRef.current.on("input_audio_buffer.speech_stopped", handleSpeechStopped);
+
+      // Handle connection errors and disconnections
+      openAIClientRef.current.on("error", async (error: any) => {
+        console.error("OpenAI RealtimeClient error:", error);
+        isOpenAIConnectedRef.current = false;
+
+        const msg = error?.message || error?.type || JSON.stringify(error);
+        setError(`Connection error: ${msg}`);
+
+        // Detect common disconnect/session expiration messages and attempt reconnect
+        const shouldReconnect =
+          msg?.toString().toLowerCase().includes("not connected") ||
+          msg?.toString().toLowerCase().includes("session") ||
+          msg?.toString().toLowerCase().includes("expired") ||
+          msg?.toString().toLowerCase().includes("reconnect");
+
+        if (shouldReconnect) {
+          // Attempt a reconnect without requesting a new assistant response
+          handleReconnectRef.current();
+        }
+      });
+
+      // Listen for session updates that might indicate disconnection
+      openAIClientRef.current.on("session_updated", (event: any) => {
+        console.log("Session updated event:", JSON.stringify(event, null, 2));
+        if (event.session?.status === "closed" || event.session?.status === "error") {
+          console.warn("OpenAI session closed or errored:", event.session?.status);
+          isOpenAIConnectedRef.current = false;
+          // try reconnect
+          handleReconnectRef.current();
+        }
+      });
+
+      await openAIClientRef.current.connect().then(() => {
+        console.log("OpenAI Client connected successfully");
+        isOpenAIConnectedRef.current = true;
+        reconnectAttemptsRef.current = 0;
+
+        // Only create a response when explicitly requested (initial start). When reconnecting,
+        // we skip createResponse to avoid the assistant auto-speaking.
+        if (!options?.skipCreateResponse) {
+          try {
+            openAIClientRef.current?.createResponse();
+          } catch (err) {
+            console.warn("createResponse failed (non-fatal):", err);
+          }
+        }
+
+        // ensure recording resumes so subsequent user speech is captured
+        startRecording();
+
+        // start heartbeat to keep session active during quiet periods
+        startHeartbeat();
+      }).catch((error: any) => {
+        console.error("Failed to connect OpenAI client:", error);
+        isOpenAIConnectedRef.current = false;
+        setError(`Failed to connect: ${error.message}`);
+        // Try reconnect
+        handleReconnectRef.current();
+      });
+
+      setIsAvatarVisible(true);
+    } catch (error: any) {
+      console.error("Error initializing OpenAI client:", error);
+      isOpenAIConnectedRef.current = false;
+      setError(`Failed to initialize OpenAI client: ${error.message}`);
+      handleReconnectRef.current();
+    }
+  }, [initialPrompt, openai_model, openai_voice, handleConversationUpdate, interruptConversation, handleSpeechStopped, startRecording, startHeartbeat]);
+
+  /**
+   * Handles reconnection with backoff. Reconnects without calling createResponse (to avoid auto speech).
+   */
+  const handleReconnect = useCallback(async () => {
+    if (isOpenAIConnectedRef.current) return;
+    if (reconnectAttemptsRef.current >= RECONNECT_MAX_ATTEMPTS) {
+      console.warn("Max reconnect attempts reached");
+      return;
+    }
+
+    reconnectAttemptsRef.current += 1;
+    const attempt = reconnectAttemptsRef.current;
+    const backoffMs = Math.min(30000, 1000 * Math.pow(2, attempt)); // exponential backoff
+
+    console.log(`Attempting reconnect #${attempt} in ${backoffMs}ms`);
+    // clear old heartbeat
+    clearHeartbeat();
+
+    setTimeout(async () => {
+      try {
+        await initializeOpenAIClientRef.current({ skipCreateResponse: true });
+        // success will reset reconnectAttemptsRef in initializeOpenAIClient
+      } catch (err) {
+        console.warn("Reconnect attempt failed:", err);
+        // schedule next attempt
+        handleReconnectRef.current();
+      }
+    }, backoffMs);
+  }, [clearHeartbeat]);
+
+  // Keep refs in sync with latest callbacks
+  useEffect(() => {
+    handleReconnectRef.current = handleReconnect;
+  }, [handleReconnect]);
+
+  useEffect(() => {
+    initializeOpenAIClientRef.current = initializeOpenAIClient;
+  }, [initializeOpenAIClient]);
+
+  // When component unmounts, ensure cleanup
+  useEffect(() => {
+    return () => {
+      clearHeartbeat();
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+        inactivityTimerRef.current = null;
+      }
+      try {
+        openAIClientRef.current?.disconnect();
+      } catch (e) {}
+      simliClient?.close();
+      if (audioContextRef.current) {
+        audioContextRef.current?.close();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
    * Handles the start of the interaction, initializing clients and starting recording.
@@ -618,7 +584,7 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
       simliClient?.on("connected", () => {
         console.log("SimliClient connected");
         // Initialize OpenAI client
-        initializeOpenAIClient();
+        initializeOpenAIClientRef.current();
       });
 
       simliClient?.on("disconnected", () => {
