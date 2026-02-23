@@ -1,54 +1,127 @@
-INSTALLATION INSTRUCTIONS (Sep 8. 2025):
-0. install npm
+# Hamilton — Interactive AI Avatar
 
-1. git clone the repo (https://github.com/jperge/hamilton)
+A real-time conversational AI avatar of Alexander Hamilton, powered by [Simli](https://www.simli.com/) for lip-synced video and your choice of **OpenAI Realtime** or **Google Gemini Live** for voice intelligence. Built with Next.js.
 
-2. copy over the existing .env file containing the simli and openai secret keys
+## Features
 
-3. install packages: cd into hamilton folder and from command line, run: 'npm i'
+- **Dual voice backends** — Switch between OpenAI Realtime API and Google Gemini Live API
+- **Lip-synced avatar** — Simli renders a photorealistic face that moves in sync with AI speech
+- **Server-side VAD** — Both backends detect when you start/stop speaking automatically
+- **Inactivity timeout** — Session ends after 20 seconds of silence to conserve API usage
+- **Noise reduction** — OpenAI backend uses near-field noise reduction; Gemini uses low-sensitivity speech detection
 
-4. start the application: from command line, run 'npm run dev'
+## Prerequisites
 
-5. make sure the audio setting is not using bluetooth, and is using the default microphone of the device
+- **Node.js v20** (v23 has compatibility issues with Next.js 14; use `nvm use 20`)
+- **npm**
+- API keys for:
+  - [Simli](https://www.simli.com/profile)
+  - [OpenAI](https://platform.openai.com/settings/profile?tab=api-keys) (for Realtime API)
+  - [Google AI](https://aistudio.google.com/apikey) (for Gemini Live API)
 
-6. select background noise mode in microphone setting (works better with background speaking)
+## Setup
 
+1. **Clone the repo**
+   ```bash
+   git clone https://github.com/jperge/hamilton
+   cd hamilton
+   ```
 
+2. **Configure environment variables**
 
+   Copy the sample env file and add your API keys:
+   ```bash
+   cp .env_sample .env
+   ```
 
-# Create Simli App (OpenAI)
-This starter is an example of how to create a composable Simli interaction that runs in a Next.js app.
+   Edit `.env`:
+   ```
+   NEXT_PUBLIC_SIMLI_API_KEY="your-simli-key"
+   NEXT_PUBLIC_OPENAI_API_KEY="your-openai-key"
+   NEXT_PUBLIC_GEMINI_API_KEY="your-gemini-key"
+   ```
 
- ## Usage
- 1. Rename .env_sample to .env and paste your API keys: [SIMLI-API-KEY](https://www.simli.com/profile) and [OPENAI-API-KEY](https://platform.openai.com/settings/profile?tab=api-keys) <br/> If you want to try Simli but don't have API access to these third parties, ask in Discord and we can help you out with that ([Discord Link](https://discord.gg/yQx49zNF4d)). 
-```js
-NEXT_PUBLIC_SIMLI_API_KEY="SIMLI-API-KEY"
-NEXT_PUBLIC_OPENAI_API_KEY="OPENAI-API-KEY"
-``` 
+3. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-2. Insall packages
-```bash
-npm install
-```
+4. **Start the dev server**
+   ```bash
+   npm run dev
+   ```
 
-3. Run
-```bash
-npm run dev
-```
+5. Open [http://localhost:3000](http://localhost:3000)
 
-4. Customize your avatar's face and prompt by editing app/page.tsx.
+## Usage
+
+1. **Select a voice backend** using the toggle in the bottom-right corner (OpenAI or Gemini)
+2. Click **Chat with Hamilton** to start the interaction
+3. Speak into your microphone — Hamilton will respond in character
+4. Click **Stop Interaction** to end the session
+
+**Audio tips:**
+- Use the device's built-in microphone (not Bluetooth)
+- Select background noise mode in your OS microphone settings for better results in noisy environments
+
+## Customization
+
+Edit `app/page.tsx` to change the avatar, voice, or persona:
+
+### Avatar face and persona
 ```js
 const avatar = {
-  name: "Frank",
-  simli_faceid: "5514e24d-6086-46a3-ace4-6a7264e5cb7c",
-  initialPrompt: "You are a helpful AI assistant named Frank. You are friendly and concise in your responses. Your task is to help users with any questions they might have.",
+  name: "Alex",
+  simli_faceid: "276ed3c6-36f0-44e2-8eef-6d04b9f473fc",
+  initialPrompt: `Role: You are Alexander Hamilton...`,
 };
 ```
 
-## Characters
-You can swap out the character by finding one that you like in the [docs](https://docs.simli.com/introduction), or [create your own](https://app.simli.com/) 
+Browse available faces in the [Simli docs](https://docs.simli.com/introduction) or [create your own](https://app.simli.com/).
 
-![alt text](media/image.png) ![alt text](media/image-4.png) ![alt text](media/image-2.png) ![alt text](media/image-3.png) ![alt text](media/image-5.png) ![alt text](media/image-6.png)
+### Voice backend defaults
+```js
+const BACKEND_DEFAULTS = {
+  openai: { voiceModel: "gpt-realtime", voiceName: "ballad" },
+  gemini: { voiceModel: "gemini-2.5-flash-native-audio-preview-12-2025", voiceName: "Orus" },
+};
+```
 
-## Deploy on Vercel
-An easy way to deploy your avatar interaction to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme). 
+**OpenAI voices:** alloy, ash, ballad, coral, echo, sage, shimmer, verse
+
+**Gemini voices:** Puck, Charon, Kore, Fenrir, Aoede, Leda, Orus, Zephyr
+
+## Architecture
+
+The app uses a **VoiceClient abstraction** that lets OpenAI and Gemini be swapped transparently:
+
+```
+page.tsx (backend selection + state)
+  └── SimliVoiceAvatar (session lifecycle, mic recording)
+        ├── SimliClient (avatar rendering — unchanged per backend)
+        └── VoiceClient (via factory)
+              ├── OpenAIVoiceClient (24kHz input, RealtimeClient wrapper)
+              └── GeminiVoiceClient (16kHz input, @google/genai live wrapper)
+```
+
+Key files:
+| File | Purpose |
+|------|---------|
+| `app/voice/VoiceClient.ts` | Interface and types |
+| `app/voice/OpenAIVoiceClient.ts` | OpenAI Realtime implementation |
+| `app/voice/GeminiVoiceClient.ts` | Gemini Live implementation |
+| `app/voice/createVoiceClient.ts` | Factory function |
+| `app/voice/audioUtils.ts` | Shared audio processing (downsampling, format conversion) |
+| `app/SimliVoiceAvatar.tsx` | Main avatar component |
+| `app/page.tsx` | Page layout and backend selection |
+
+## Troubleshooting
+
+| Issue | Fix |
+|-------|-----|
+| `next dev` hangs or is very slow | Switch to Node.js v20: `nvm use 20` |
+| `BatchedFileReader is not a constructor` | Reinstall dependencies: `rm -rf node_modules .next && npm install` |
+| Avatar is silent (OpenAI) | Check `NEXT_PUBLIC_OPENAI_API_KEY` in `.env` |
+| Avatar is silent (Gemini) | Check `NEXT_PUBLIC_GEMINI_API_KEY` in `.env` |
+| Gemini connection drops after idle | The keepalive mechanism sends silent packets every 2s; if issues persist, check your network |
+| Microphone not detected | Ensure browser has mic permissions and you're not using a Bluetooth audio device |
