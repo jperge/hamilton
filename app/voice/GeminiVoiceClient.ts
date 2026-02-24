@@ -47,7 +47,7 @@ export class GeminiVoiceClient implements VoiceClient {
               startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
               endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
               prefixPaddingMs: 20,
-              silenceDurationMs: 500,
+              silenceDurationMs: 200,
             },
             activityHandling: ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
             turnCoverage: TurnCoverage.TURN_INCLUDES_ALL_INPUT,
@@ -172,9 +172,23 @@ export class GeminiVoiceClient implements VoiceClient {
   }
 
   triggerResponse(): void {
-    // No-op: Gemini Live responds automatically via built-in VAD.
-    // The model starts generating a response when it detects the user
-    // has finished speaking.
+    if (this.config.aiSpeaksFirst && this.connected && this.session) {
+      try {
+        console.log("Gemini: Injecting greeting prompt for AI-speaks-first");
+        this.session.sendClientContent({
+          turns: [
+            {
+              role: "user",
+              parts: [{ text: "Please greet me and introduce yourself briefly." }],
+            },
+          ],
+          turnComplete: true,
+        });
+      } catch (err) {
+        console.warn("Gemini sendClientContent failed (non-fatal):", err);
+      }
+    }
+    // When aiSpeaksFirst is false, remain a no-op — Gemini responds via VAD.
   }
 
   cancelResponse(): void {
