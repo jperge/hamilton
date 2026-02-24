@@ -37,6 +37,8 @@ export interface VoiceClientConfig {
   model: string;
   voice: string;
   systemPrompt: string;
+  /** When true, the AI will speak first with a greeting. Default: false */
+  aiSpeaksFirst?: boolean;
 }
 
 export interface VoiceClient {

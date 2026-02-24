@@ -14,6 +14,7 @@ interface SimliVoiceAvatarProps {
   voiceModel: string;
   voiceName: string;
   initialPrompt: string;
+  aiSpeaksFirst: boolean;
   onStart: () => void;
   onClose: () => void;
   showDottedFace: boolean;
@@ -27,6 +28,7 @@ const SimliVoiceAvatar: React.FC<SimliVoiceAvatarProps> = ({
   voiceModel,
   voiceName,
   initialPrompt,
+  aiSpeaksFirst,
   onStart,
   onClose,
   showDottedFace,
@@ -235,6 +237,7 @@ const SimliVoiceAvatar: React.FC<SimliVoiceAvatarProps> = ({
         model: voiceModel,
         voice: voiceName,
         systemPrompt: initialPrompt,
+        aiSpeaksFirst,
       }, {
         onAudioData: (audio: Int16Array) => {
           audioChunkQueueRef.current.push(audio);
@@ -273,7 +276,7 @@ const SimliVoiceAvatar: React.FC<SimliVoiceAvatarProps> = ({
       await voiceClientRef.current.connect();
       setIsAvatarVisible(true);
     },
-    [voiceBackend, voiceModel, voiceName, initialPrompt, processNextAudioChunk, startRecording]
+    [voiceBackend, voiceModel, voiceName, initialPrompt, aiSpeaksFirst, processNextAudioChunk, startRecording]
   );
 
   // Keep ref in sync with latest callback

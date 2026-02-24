@@ -177,8 +177,16 @@ export class OpenAIVoiceClient implements VoiceClient {
   triggerResponse(): void {
     console.log("OpenAI: triggerResponse called, client connected:", this.connected);
     try {
-      this.client?.createResponse();
-      console.log("OpenAI: createResponse sent");
+      if (this.config.aiSpeaksFirst) {
+        console.log("OpenAI: Injecting greeting prompt for AI-speaks-first");
+        this.client?.sendUserMessageContent([
+          { type: "input_text", text: "Please greet me and introduce yourself briefly." }
+        ]);
+        // sendUserMessageContent calls createResponse() internally
+      } else {
+        this.client?.createResponse();
+      }
+      console.log("OpenAI: triggerResponse completed");
     } catch (err) {
       console.warn("createResponse failed (non-fatal):", err);
     }

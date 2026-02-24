@@ -44,6 +44,7 @@ const Demo: React.FC = () => {
   const [showDottedFace, setShowDottedFace] = useState(true);
   const [voiceBackend, setVoiceBackend] = useState<VoiceBackend>("openai");
   const [isInteracting, setIsInteracting] = useState(false);
+  const [aiSpeaksFirst, setAiSpeaksFirst] = useState(true);
 
   const currentDefaults = BACKEND_DEFAULTS[voiceBackend];
 
@@ -71,6 +72,7 @@ const Demo: React.FC = () => {
               voiceName={currentDefaults.voiceName}
               simli_faceid={avatar.simli_faceid}
               initialPrompt={avatar.initialPrompt}
+              aiSpeaksFirst={aiSpeaksFirst}
               onStart={onStart}
               onClose={onClose}
               showDottedFace={showDottedFace}
@@ -96,6 +98,19 @@ const Demo: React.FC = () => {
           onChange={setVoiceBackend}
           disabled={isInteracting}
         />
+        <label
+          className={`flex items-center gap-2 text-xs font-abc-repro-mono text-white ${
+            isInteracting ? "opacity-50 pointer-events-none" : "cursor-pointer"
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={aiSpeaksFirst}
+            onChange={(e) => setAiSpeaksFirst(e.target.checked)}
+            disabled={isInteracting}
+          />
+          Hamilton speaks first
+        </label>
         <div className="bg-white p-1 rounded">
           <Image
             src={fcatLogo}
