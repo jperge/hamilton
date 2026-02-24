@@ -40,7 +40,7 @@ export function applyLowPassFilter(
         sum += coefficients[j] * data[idx];
       }
     }
-    result[i] = Math.round(sum);
+    result[i] = Math.max(-32768, Math.min(32767, Math.round(sum)));
   }
 
   return result;
@@ -89,7 +89,7 @@ export function downsampleAudio(
     if (index + 1 < filteredData.length) {
       const a = filteredData[index];
       const b = filteredData[index + 1];
-      result[i] = Math.round(a + fraction * (b - a));
+      result[i] = Math.max(-32768, Math.min(32767, Math.round(a + fraction * (b - a))));
     } else {
       result[i] = filteredData[index];
     }

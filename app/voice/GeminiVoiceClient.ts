@@ -47,7 +47,7 @@ export class GeminiVoiceClient implements VoiceClient {
               startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
               endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_LOW,
               prefixPaddingMs: 20,
-              silenceDurationMs: 200,
+              silenceDurationMs: 500,
             },
             activityHandling: ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
             turnCoverage: TurnCoverage.TURN_INCLUDES_ALL_INPUT,
