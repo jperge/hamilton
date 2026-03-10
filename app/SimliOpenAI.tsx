@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { RealtimeClient } from "@openai/realtime-api-beta";
-import { SimliClient } from "simli-client";
+import { SimliClient, generateSimliSessionToken, SimliSessionRequest, LogLevel } from "simli-client";
 import VideoBox from "./Components/VideoBox";
 import cn from "./utils/TailwindMergeAndClsx";
 import IconExit from "@/media/IconExit";
@@ -21,8 +21,6 @@ interface SimliOpenAIProps {
   showDottedFace: boolean;
 }
 
-const simliClient = new SimliClient();
-
 const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   simli_faceid,
   openai_voice,
@@ -40,6 +38,7 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   const [userMessage, setUserMessage] = useState("...");
 
   // Refs for various components and states
+  const simliClientRef = useRef<SimliClient | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const openAIClientRef = useRef<RealtimeClient | null>(null);
@@ -84,20 +83,29 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   /**
    * Initializes the Simli client with the provided configuration.
    */
-  const initializeSimliClient = useCallback(() => {
+  const initializeSimliClient = useCallback(async () => {
     if (videoRef.current && audioRef.current) {
-      const SimliConfig = {
-        apiKey: process.env.NEXT_PUBLIC_SIMLI_API_KEY,
-        faceID: simli_faceid,
+      const config: SimliSessionRequest = {
+        faceId: simli_faceid,
         handleSilence: true,
-        maxSessionLength: 6000, // in seconds
-        maxIdleTime: 6000, // in seconds
-        videoRef: videoRef.current,
-        audioRef: audioRef.current,
-        enableConsoleLogs: true,
+        maxSessionLength: 6000,
+        maxIdleTime: 6000,
       };
 
-      simliClient.Initialize(SimliConfig as any);
+      const { session_token } = await generateSimliSessionToken({
+        apiKey: process.env.NEXT_PUBLIC_SIMLI_API_KEY!,
+        config,
+      });
+
+      simliClientRef.current = new SimliClient(
+        session_token,
+        videoRef.current,
+        audioRef.current,
+        null,          // iceServers (not needed for LiveKit)
+        LogLevel.INFO, // logLevel
+        "livekit",     // transport_mode
+      );
+
       console.log("Simli Client initialized");
     }
   }, [simli_faceid]);
@@ -144,7 +152,7 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
         const chunkDurationMs = (audioChunk.length / 16000) * 1000; // Calculate chunk duration in milliseconds
 
         // Send audio chunks to Simli immediately
-        simliClient?.sendAudioData(audioChunk as any);
+        simliClientRef.current?.sendAudioData(new Uint8Array(audioChunk.buffer));
         console.log(
           "Sent audio chunk to Simli:",
           chunkDurationMs,
@@ -278,7 +286,7 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
    */
   const interruptConversation = () => {
     console.warn("User interrupted the conversation");
-    simliClient?.ClearBuffer();
+    simliClientRef.current?.ClearBuffer();
     openAIClientRef.current?.cancelResponse("");
   };
 
@@ -299,7 +307,8 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
     isOpenAIConnectedRef.current = false;
     reconnectAttemptsRef.current = 0;
     clearHeartbeat();
-    simliClient?.close();
+    simliClientRef.current?.stop();
+    simliClientRef.current = null;
     try {
       openAIClientRef.current?.disconnect();
     } catch (error: any) {
@@ -546,7 +555,8 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
       try {
         openAIClientRef.current?.disconnect();
       } catch (e) {}
-      simliClient?.close();
+      simliClientRef.current?.stop();
+      simliClientRef.current = null;
       if (audioContextRef.current) {
         audioContextRef.current?.close();
       }
@@ -564,9 +574,9 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
 
     try {
       console.log("Starting...");
-      initializeSimliClient();
-      await simliClient?.start();
+      await initializeSimliClient();
       eventListenerSimli();
+      await simliClientRef.current?.start();
     } catch (error: any) {
       console.error("Error starting interaction:", error);
       setError(`Error starting interaction: ${error.message}`);
@@ -574,21 +584,23 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
       setIsAvatarVisible(true);
       setIsLoading(false);
     }
-  }, [onStart]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onStart, initializeSimliClient]);
 
   /**
    * Simli Event listeners
    */
   const eventListenerSimli = useCallback(() => {
-    if (simliClient) {
-      simliClient?.on("connected", () => {
+    const client = simliClientRef.current;
+    if (client) {
+      client.on("start", () => {
         console.log("SimliClient connected");
         // Initialize OpenAI client
         initializeOpenAIClientRef.current();
       });
 
-      simliClient?.on("disconnected", () => {
-        console.log("SimliClient disconnected");
+      client.on("stop", () => {
+        console.log("SimliClient stopped (server-initiated)");
         isOpenAIConnectedRef.current = false;
         try {
           openAIClientRef.current?.disconnect();
@@ -598,6 +610,16 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
         if (audioContextRef.current) {
           audioContextRef.current?.close();
         }
+      });
+
+      client.on("error", (detail: string) => {
+        console.error("SimliClient error:", detail);
+        setError(detail);
+      });
+
+      client.on("startup_error", (message: string) => {
+        console.error("SimliClient startup error:", message);
+        setError(message);
       });
     }
   }, []);
